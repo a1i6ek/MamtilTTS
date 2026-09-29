@@ -1,12 +1,16 @@
 import argparse
+import collections
 import datetime as dt
+import functools
 import os
 import time
+import typing
 import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import omegaconf
 import soundfile as sf
 import torch
 
@@ -33,6 +37,9 @@ MULTISPEAKER_MODEL = {
 }
 
 SINGLESPEAKER_MODEL = {"matcha_ljspeech": {"vocoder": "hifigan_T2_v1", "speaking_rate": 0.95, "spk": None}}
+
+# Mamtil's own model (man voice), used when --checkpoint_path is not given.
+DEFAULT_CHECKPOINT = Path(__file__).resolve().parent.parent / "assets" / "checkpoint_epoch=279.ckpt"
 
 
 def plot_spectrogram_to_numpy(spectrogram, filename):
@@ -71,17 +78,14 @@ def get_texts(args):
 
 def assert_required_models_available(args):
     save_dir = get_user_data_dir()
-    if not hasattr(args, "checkpoint_path") and args.checkpoint_path is None:
+    if args.checkpoint_path is not None:
         model_path = args.checkpoint_path
     else:
         model_path = save_dir / f"{args.model}.ckpt"
         assert_model_downloaded(model_path, MATCHA_URLS[args.model])
 
     vocoder_path = save_dir / f"{args.vocoder}"
-    print(VOCODER_URLS)
     assert_model_downloaded(vocoder_path, VOCODER_URLS[args.vocoder])
-    print('model_path = ', model_path)
-    print('vocoder_path = ', vocoder_path)
     return {"matcha": model_path, "vocoder": vocoder_path}
 
 
@@ -97,7 +101,6 @@ def load_hifigan(checkpoint_path, device):
 def load_vocoder(vocoder_name, checkpoint_path, device):
     print(f"[!] Loading {vocoder_name}!")
     vocoder = None
-    vocoder_name = 'hifigan_T2_v1'
     if vocoder_name in ("hifigan_T2_v1", "hifigan_univ_v1"):
         vocoder = load_hifigan(checkpoint_path, device)
     else:
@@ -110,9 +113,27 @@ def load_vocoder(vocoder_name, checkpoint_path, device):
     return vocoder, denoiser
 
 
+CHECKPOINT_SAFE_GLOBALS = [
+    omegaconf.dictconfig.DictConfig,
+    omegaconf.listconfig.ListConfig,
+    omegaconf.base.ContainerMetadata,
+    omegaconf.base.Metadata,
+    omegaconf.nodes.AnyNode,
+    torch.optim.Adam,
+    functools.partial,
+    collections.defaultdict,
+    typing.Any,
+    list,
+    dict,
+    int,
+]
+
+
 def load_matcha(model_name, checkpoint_path, device):
     print(f"[!] Loading {model_name}!")
-    model = MatchaTTS.load_from_checkpoint(checkpoint_path, map_location=device)
+    # torch>=2.6 loads with weights_only=True; allowlist the config/optimizer objects Lightning pickles
+    with torch.serialization.safe_globals(CHECKPOINT_SAFE_GLOBALS):
+        model = MatchaTTS.load_from_checkpoint(checkpoint_path, map_location=device)
     _ = model.eval()
 
     print(f"[+] {model_name} loaded!")
@@ -130,7 +151,7 @@ def to_waveform(mel, vocoder, denoiser=None):
 def save_to_folder(filename: str, output: dict, folder: str):
     folder = Path(folder)
     folder.mkdir(exist_ok=True, parents=True)
-    plot_spectrogram_to_numpy(np.array(output["mel"].squeeze().float().cpu()), f"{filename}.png")
+    plot_spectrogram_to_numpy(np.array(output["mel"].squeeze().float().cpu()), folder / f"{filename}.png")
     np.save(folder / f"{filename}", output["mel"].cpu().numpy())
     sf.write(folder / f"{filename}.wav", output["waveform"], 22050, "PCM_24")
     return folder.resolve() / f"{filename}.wav"
@@ -225,14 +246,14 @@ def cli():
     parser.add_argument(
         "--checkpoint_path",
         type=str,
-        default='/home/bektemir/Desktop/MamtilTTS/checkpoints/checkpoint_epoch=279.ckpt',
-        help="Path to the custom model checkpoint",
+        default=str(DEFAULT_CHECKPOINT) if DEFAULT_CHECKPOINT.exists() else None,
+        help=f"Path to the custom model checkpoint (default: {DEFAULT_CHECKPOINT.name} if present)",
     )
 
     parser.add_argument(
         "--vocoder",
         type=str,
-        default='hifigan_univ_v1',
+        default="hifigan_univ_v1",
         help="Vocoder to use (default: will use the one suggested with the pretrained model))",
         choices=VOCODER_URLS.keys(),
     )
@@ -282,23 +303,19 @@ def cli():
         paths["matcha"] = args.checkpoint_path
         args.model = "custom_model"
 
-    print('args.model = ', args.model)
-    print('paths["matcha"] = ', paths["matcha"])
-    print('device = ', device)
-    print('args.vocoder = ', args.vocoder)
-    print('paths["vocoder"] = ', paths["vocoder"])
     model = load_matcha(args.model, paths["matcha"], device)
     vocoder, denoiser = load_vocoder(args.vocoder, paths["vocoder"], device)
 
     texts = get_texts(args)
 
     spk = torch.tensor([args.spk], device=device, dtype=torch.long) if args.spk is not None else None
-    time_v = time.time()
+    start_time = time.time()
     if len(texts) == 1 or not args.batched:
         unbatched_synthesis(args, device, model, vocoder, denoiser, texts, spk)
     else:
         batched_synthesis(args, device, model, vocoder, denoiser, texts, spk)
-    print('generation time = ', time.time() - time_v)
+    print(f"[🍵] Total generation time: {time.time() - start_time:.2f}s")
+
 
 class BatchedSynthesisDataset(torch.utils.data.Dataset):
     def __init__(self, processed_texts):

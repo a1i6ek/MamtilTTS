@@ -9,6 +9,8 @@ Models trained by Ulutsoft LLC.
 
 Аял:   [https://drive.google.com/file/d/1aaaspyNOYZGdoyWhkhUa6RMsCzIzu7fC/view?usp=drive_link](https://drive.google.com/file/d/1aaaspyNOYZGdoyWhkhUa6RMsCzIzu7fC/view?usp=sharing)
 
+Save the checkpoints in `assets/` as `checkpoint_epoch=279.ckpt` (Эркек / man) and `checkpoint_epoch=479.ckpt` (Аял / woman). The folder is git-ignored.
+
 ## Орнотуу
 
 1. Create an environment (suggested but optional)
@@ -75,6 +77,29 @@ matcha-tts --text "<INPUT TEXT>" --temperature 0.667
 ```bash
 matcha-tts --text "<INPUT TEXT>" --steps 10
 ```
+
+## Server and web app
+
+A FastAPI server (`server/`) turns text into speech, and a SvelteKit chat app (`web/`) talks to it. Requires Python 3.12 and [bun](https://bun.sh).
+
+```bash
+make install   # venv + Python package, and web dependencies
+make dev       # server on http://localhost:8000, web app on http://localhost:5173
+```
+
+| Target | Description |
+| --- | --- |
+| `make install-server` / `make install-web` | Install one side only |
+| `make dev-server` / `make dev-web` | Run one side with hot reload |
+| `make start-server` | Run the server for production (`SERVER_HOST`, `SERVER_PORT`) |
+| `make build-web` | Build the web app |
+
+API (interactive docs at `/docs`):
+
+- `POST /api/tts` with `{"text": "...", "voice": "man" | "woman"}` and optional `temperature`, `speaking_rate`, `steps`. Returns `{"audio": "<base64 WAV>", "voice", "sample_rate", "duration", "processing_time"}`.
+- `GET /api/voices` lists voices, `GET /api/health` reports status.
+
+Server settings are environment variables: `MATCHA_ASSETS_DIR`, `MATCHA_DEVICE` (`cpu`/`cuda`), `MATCHA_VOCODER`, and `CORS_ORIGINS` (comma-separated). For a web app served from another origin, set `PUBLIC_API_URL` to the server URL.
 
 ## Train with your own dataset
 

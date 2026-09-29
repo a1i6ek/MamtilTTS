@@ -162,3 +162,9 @@ g_02500000
 gradio_cached_examples/
 synth_output/
 checkpoints/
+
+# Mamtil TTS
+assets/
+utterance_*.wav
+utterance_*.npy
+utterance_*.png

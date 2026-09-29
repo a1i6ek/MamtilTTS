@@ -36,10 +36,14 @@ matplotlib
 pandas
 conformer==0.3.2
 diffusers==0.25.0
+huggingface_hub<0.26  # diffusers 0.25 uses cached_download, removed in 0.26
 notebook
 ipywidgets
-gradio
+gradio<5
 gdown
 wget
 seaborn
-piper_phonemize
+
+# --------- server --------- #
+fastapi
+uvicorn[standard]

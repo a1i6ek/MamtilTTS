@@ -212,6 +212,6 @@ def assert_model_downloaded(checkpoint_path, url, use_wget=False):
     log.info(f"[-] Model not found at {checkpoint_path}! Will download it")
     checkpoint_path = str(checkpoint_path)
     if not use_wget:
-        gdown.download(url=url, output=checkpoint_path, quiet=False, fuzzy=True)
+        gdown.download(url=url, output=checkpoint_path, quiet=False)
     else:
         wget.download(url=url, out=checkpoint_path)

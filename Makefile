@@ -1,3 +1,8 @@
+PYTHON ?= python3.12
+VENV ?= venv
+SERVER_HOST ?= 0.0.0.0
+SERVER_PORT ?= 8000
+WEB_PORT ?= 5173
 
 help:  ## Show help
 	@grep -E '^[.a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -40,3 +45,32 @@ train-ljspeech-min: ## Train the model with minimum memory
 
 start_app: ## Start the app
 	python matcha/app.py
+
+# --------- server + web app --------- #
+
+install: install-server install-web ## Install server and web app dependencies
+
+install-server: ## Create the venv and install the TTS package and server dependencies
+	test -d $(VENV) || $(PYTHON) -m venv $(VENV)
+	$(VENV)/bin/pip install --upgrade pip
+	$(VENV)/bin/pip install -e .
+
+install-web: ## Install web app dependencies
+	cd web && bun install
+
+dev: ## Run server and web app together with hot reload
+	$(MAKE) -j2 dev-server dev-web
+
+dev-server: ## Run the TTS server with hot reload
+	$(VENV)/bin/uvicorn server.main:app --reload --reload-dir server --reload-dir matcha --host 127.0.0.1 --port $(SERVER_PORT)
+
+dev-web: ## Run the web app dev server (proxies /api to the server)
+	cd web && API_PROXY_TARGET=http://127.0.0.1:$(SERVER_PORT) bun run dev --port $(WEB_PORT)
+
+start-server: ## Run the TTS server for production (single worker: the model is loaded per process)
+	$(VENV)/bin/uvicorn server.main:app --host $(SERVER_HOST) --port $(SERVER_PORT) --workers 1
+
+build-web: ## Build the web app for production
+	cd web && bun run build
+
+.PHONY: install install-server install-web dev dev-server dev-web start-server build-web
