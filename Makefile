@@ -52,8 +52,8 @@ install: install-server install-web ## Install server and web app dependencies
 
 install-server: ## Create the venv and install the TTS package and server dependencies
 	test -d $(VENV) || $(PYTHON) -m venv $(VENV)
-	$(VENV)/bin/pip install --upgrade pip
-	$(VENV)/bin/pip install -e .
+	$(VENV)/bin/python -m pip install --upgrade pip
+	$(VENV)/bin/python -m pip install -e .
 
 install-web: ## Install web app dependencies
 	cd web && bun install
@@ -62,13 +62,13 @@ dev: ## Run server and web app together with hot reload
 	$(MAKE) -j2 dev-server dev-web
 
 dev-server: ## Run the TTS server with hot reload
-	$(VENV)/bin/uvicorn server.main:app --reload --reload-dir server --reload-dir matcha --host 127.0.0.1 --port $(SERVER_PORT)
+	$(VENV)/bin/python -m uvicorn server.main:app --reload --reload-dir server --reload-dir matcha --host 127.0.0.1 --port $(SERVER_PORT)
 
 dev-web: ## Run the web app dev server (proxies /api to the server)
 	cd web && API_PROXY_TARGET=http://127.0.0.1:$(SERVER_PORT) bun run dev --port $(WEB_PORT)
 
 start-server: ## Run the TTS server for production (single worker: the model is loaded per process)
-	$(VENV)/bin/uvicorn server.main:app --host $(SERVER_HOST) --port $(SERVER_PORT) --workers 1
+	$(VENV)/bin/python -m uvicorn server.main:app --host $(SERVER_HOST) --port $(SERVER_PORT) --workers 1
 
 build-web: ## Build the web app for production
 	cd web && bun run build
